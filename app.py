@@ -14,6 +14,14 @@ import io
 # =====================
 API_BASE = "https://api.feegow.com/v1/api"
 
+STATUS_DISPONIVEIS = [
+    "Aguardando aprovação do cliente",
+    "Aprovada pelo cliente",
+    "Rejeitada pelo cliente",
+    "Aguardando aprovação de financiamento",
+    "Executada"
+]
+
 # =====================
 # AUTENTICAÇÃO
 # =====================
@@ -95,13 +103,18 @@ def gerar_pdf(df, data_inicio, data_fim):
 # =====================
 st.title("📊 Relatório de Propostas")
 
-col1, col2 = st.columns(2)
-with col1:
-    data_inicio = st.date_input("Data início")
-with col2:
-    data_fim = st.date_input("Data fim")
+st.sidebar.subheader("Filtros")
 
-if st.button("🔍 Gerar relatório"):
+data_inicio = st.sidebar.date_input("Data início")
+data_fim = st.sidebar.date_input("Data fim")
+
+status_selecionados = st.sidebar.multiselect(
+    "Status da proposta",
+    STATUS_DISPONIVEIS,
+    default=STATUS_DISPONIVEIS
+)
+
+if st.sidebar.button("🔍 Gerar relatório"):
     with st.spinner("Buscando dados..."):
         resultado = listar_propostas(
             data_inicio.strftime("%d-%m-%Y"),
@@ -126,6 +139,14 @@ if st.button("🔍 Gerar relatório"):
             }
             for p in propostas
         ])
+
+        # 🔎 FILTRO POR STATUS
+        if status_selecionados:
+            df = df[df["Status"].isin(status_selecionados)]
+
+        if df.empty:
+            st.warning("Nenhuma proposta encontrada com os filtros selecionados.")
+            st.stop()
 
         st.metric("Total de Propostas", len(df))
         st.metric("Valor Total (R$)", f"{df['Valor Total (R$)'].sum():,.2f}")
