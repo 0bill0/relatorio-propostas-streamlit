@@ -1,0 +1,15 @@
+# Segredos
+.streamlit/secrets.toml
+
+# Python
+__pycache__/
+*.pyc
+
+# Ambiente virtual
+.venv/
+venv/
+
+# SO / IDE
+.vscode/
+.idea/
+.DS_Store
