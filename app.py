@@ -1,7 +1,6 @@
 import streamlit as st
 import requests
 import pandas as pd
-from datetime import datetime
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
@@ -10,20 +9,12 @@ import hashlib
 import io
 
 # =====================
-# CONFIGURAÇÕES
+# CONFIG
 # =====================
 API_BASE = "https://api.feegow.com/v1/api"
 
-STATUS_DISPONIVEIS = [
-    "Aguardando aprovação do cliente",
-    "Aprovada pelo cliente",
-    "Rejeitada pelo cliente",
-    "Aguardando aprovação de financiamento",
-    "Executada"
-]
-
 # =====================
-# AUTENTICAÇÃO
+# AUTH
 # =====================
 def check_password():
     if "authenticated" not in st.session_state:
@@ -33,7 +24,6 @@ def check_password():
         return True
 
     st.title("🔒 Acesso Restrito")
-
     password = st.text_input("Senha", type="password")
 
     if st.button("Entrar"):
@@ -75,13 +65,13 @@ def gerar_pdf(df, data_inicio, data_fim):
     styles = getSampleStyleSheet()
     elements = []
 
-    total_propostas = len(df)
-    valor_total = df["Valor Total (R$)"].sum()
-
     elements.append(Paragraph("<b>Relatório de Propostas</b>", styles["Title"]))
     elements.append(Paragraph(f"Período: {data_inicio} a {data_fim}", styles["Normal"]))
-    elements.append(Paragraph(f"Total de propostas: {total_propostas}", styles["Normal"]))
-    elements.append(Paragraph(f"Valor total: R$ {valor_total:,.2f}", styles["Normal"]))
+    elements.append(Paragraph(f"Total de propostas: {len(df)}", styles["Normal"]))
+    elements.append(Paragraph(
+        f"Valor total: R$ {df['Valor Total (R$)'].sum():,.2f}",
+        styles["Normal"]
+    ))
 
     table_data = [df.columns.tolist()] + df.values.tolist()
     table = Table(table_data, repeatRows=1)
@@ -89,32 +79,28 @@ def gerar_pdf(df, data_inicio, data_fim):
         ("BACKGROUND", (0,0), (-1,0), colors.lightgrey),
         ("GRID", (0,0), (-1,-1), 1, colors.black),
         ("FONT", (0,0), (-1,0), "Helvetica-Bold"),
-        ("ALIGN", (-1,1), (-1,-1), "RIGHT"),
     ]))
 
     elements.append(table)
     doc.build(elements)
-
     buffer.seek(0)
     return buffer
 
 # =====================
-# INTERFACE
+# UI
 # =====================
 st.title("📊 Relatório de Propostas")
-
-st.sidebar.subheader("Filtros")
+st.sidebar.header("Filtros")
 
 data_inicio = st.sidebar.date_input("Data início")
 data_fim = st.sidebar.date_input("Data fim")
 
-status_selecionados = st.sidebar.multiselect(
-    "Status da proposta",
-    STATUS_DISPONIVEIS,
-    default=STATUS_DISPONIVEIS
-)
+# Inicializa estado
+if "df_base" not in st.session_state:
+    st.session_state.df_base = None
 
-if st.sidebar.button("🔍 Gerar relatório"):
+# BOTÃO APENAS PARA BUSCAR DADOS
+if st.sidebar.button("🔍 Buscar dados"):
     with st.spinner("Buscando dados..."):
         resultado = listar_propostas(
             data_inicio.strftime("%d-%m-%Y"),
@@ -127,7 +113,7 @@ if st.sidebar.button("🔍 Gerar relatório"):
             st.warning("Nenhuma proposta encontrada.")
             st.stop()
 
-        df = pd.DataFrame([
+        st.session_state.df_base = pd.DataFrame([
             {
                 "Proposta ID": p["proposal_id"],
                 "Data": p["proposal_date"],
@@ -140,30 +126,63 @@ if st.sidebar.button("🔍 Gerar relatório"):
             for p in propostas
         ])
 
-        # 🔎 FILTRO POR STATUS
-        if status_selecionados:
-            df = df[df["Status"].isin(status_selecionados)]
+# =====================
+# FILTROS (SE DADOS EXISTEM)
+# =====================
+if st.session_state.df_base is not None:
+    df = st.session_state.df_base.copy()
 
-        if df.empty:
-            st.warning("Nenhuma proposta encontrada com os filtros selecionados.")
-            st.stop()
+    st.sidebar.subheader("Filtros avançados")
 
-        st.metric("Total de Propostas", len(df))
-        st.metric("Valor Total (R$)", f"{df['Valor Total (R$)'].sum():,.2f}")
+    filtro_status = st.sidebar.multiselect(
+        "Status", sorted(df["Status"].dropna().unique())
+    )
 
-        st.dataframe(df, use_container_width=True)
+    filtro_profissional = st.sidebar.multiselect(
+        "Profissional", sorted(df["Profissional"].dropna().unique())
+    )
 
-        st.download_button(
-            "📥 Baixar CSV",
-            df.to_csv(index=False).encode("utf-8"),
-            "relatorio_propostas.csv",
-            "text/csv"
-        )
+    filtro_unidade = st.sidebar.multiselect(
+        "Unidade", sorted(df["Unidade"].dropna().unique())
+    )
 
-        pdf = gerar_pdf(df, data_inicio, data_fim)
-        st.download_button(
-            "🖨️ Baixar PDF",
-            pdf,
-            "relatorio_propostas.pdf",
-            "application/pdf"
-        )
+    filtro_paciente = st.sidebar.multiselect(
+        "Paciente ID", sorted(df["Paciente ID"].dropna().unique())
+    )
+
+    # APLICAÇÃO EM CASCATA
+    if filtro_status:
+        df = df[df["Status"].isin(filtro_status)]
+
+    if filtro_profissional:
+        df = df[df["Profissional"].isin(filtro_profissional)]
+
+    if filtro_unidade:
+        df = df[df["Unidade"].isin(filtro_unidade)]
+
+    if filtro_paciente:
+        df = df[df["Paciente ID"].isin(filtro_paciente)]
+
+    if df.empty:
+        st.warning("Nenhum resultado com os filtros selecionados.")
+        st.stop()
+
+    st.metric("Total de Propostas", len(df))
+    st.metric("Valor Total (R$)", f"{df['Valor Total (R$)'].sum():,.2f}")
+
+    st.dataframe(df, use_container_width=True)
+
+    st.download_button(
+        "📥 Baixar CSV",
+        df.to_csv(index=False).encode("utf-8"),
+        "relatorio_propostas.csv",
+        "text/csv"
+    )
+
+    pdf = gerar_pdf(df, data_inicio, data_fim)
+    st.download_button(
+        "🖨️ Baixar PDF",
+        pdf,
+        "relatorio_propostas.pdf",
+        "application/pdf"
+    )
