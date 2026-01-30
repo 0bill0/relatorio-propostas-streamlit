@@ -186,6 +186,42 @@ if st.session_state.df_base is not None:
     st.markdown(f"**Propostas ({periodo_texto}):**") #Renderiza Markdown no Streamlit
 
 
+    #RESUMO:
+    #classifica as propostas em Executadas e Não executadas
+    #agrupa por filial
+    #conta quantas existem de cada tipo
+    #gera uma tabela limpa pronta para exibição ou geração de insights.
+    resumo = (
+        df
+        .assign(
+            Tipo=lambda x: x["Status"].apply(
+                lambda s: "Executada" if s == "Executada" else "Não executada"
+        ) #Cria uma nova coluna chamada Tipo sem modificar o df original.
+        )
+            .groupby(["Unidade", "Tipo"]) #agrupa os dados por unidade e filial
+            .size() #Soma linhas em cada grupo
+            .unstack(fill_value=0) #transroma o nível tipo em colunas
+            .reset_index() #transforma o índice em colunas normais
+    )
+
+    for _, row in resumo.iterrows():
+        #percorre o DataFrame linha por linha
+        #_ → índice (não usamos, por isso o _)
+        #row → um objeto tipo dicionário com os valores da linha
+        filial = row["Unidade"]#Não precisa utilizar o get, pois ela sempre vai existir pois vem do DF base
+        executadas = row.get("Executada", 0) #IMPORTANTE usar o get pq se vier vazio não quebra o app
+        nao_executadas = row.get("Não executada", 0) #IMPORTANTE usar o get pq se vier vazio não quebra o app
+        st.markdown( 
+        #Renderiza uma linha de texto formatada no Streamlit
+            f"- **{filial}**: "
+            f"{nao_executadas} propostas não aprovadas e"
+            f"{executadas} executadas."
+            #- → vira lista (bullet
+            #**{filial}** → nome da filial em negrito
+            #Texto explicativo claro, direto, executivo
+            #Filial A: 5 propostas não aprovadas (todas exceto EXECUTADA) e 12 executadas.
+        )
+
     st.dataframe(df, use_container_width=True)
 
     st.download_button(
