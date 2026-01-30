@@ -168,7 +168,23 @@ if st.session_state.df_base is not None:
         st.stop()
 
     st.metric("Total de Propostas", len(df))
-    st.metric("Valor Total (R$)", f"{df['Valor Total (R$)'].sum():,.2f}")
+
+    valor_total = df["Valor Total (R$)"].sum()
+
+    #Convertendo para padrão de valor da moeada BR (000,00)
+    valor_formatado = (
+        f"{valor_total:,.2f}"
+        .replace(",", "X")
+        .replace(".", ",")
+        .replace("X", ".")
+    )
+
+    st.metric("Valor Total (R$)", f"R$ {valor_formatado}")
+
+    st.subheader("Resumo por Filial")
+    periodo_texto = f"{data_inicio.strftime('%d/%m/%Y')} a {data_fim.strftime('%d/%m/%Y')}" #impressão do período filtrado
+    st.markdown(f"**Propostas ({periodo_texto}):**") #Renderiza Markdown no Streamlit
+
 
     st.dataframe(df, use_container_width=True)
 
